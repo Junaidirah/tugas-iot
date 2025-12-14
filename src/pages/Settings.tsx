@@ -1,4 +1,4 @@
-import { Moon, Sun, Bell, Wifi, Gauge, Info, ChevronRight, LucideIcon } from "lucide-react";
+import { Moon, Sun, Bell, Wifi, Gauge, Info, ChevronRight, type LucideIcon } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
@@ -6,7 +6,7 @@ import { Slider } from "@/components/ui/slider";
 import BottomNav from "@/components/BottomNav";
 import DynamicBackground from "@/components/DynamicBackground";
 import { useTheme } from "@/contexts/ThemeContext";
-import { useState, ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 const Settings = () => {
   const { theme, toggleTheme } = useTheme();
@@ -130,7 +130,7 @@ const Settings = () => {
               {group.title}
             </h2>
             <Card className="glass-card divide-y divide-glass-border/30">
-              {group.items.map((item, itemIndex) => (
+              {group.items.map((item) => (
                 <div
                   key={item.label}
                   className="flex items-center justify-between p-4 hover:bg-glass/50 transition-colors first:rounded-t-2xl last:rounded-b-2xl"
