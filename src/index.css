@@ -1,0 +1,238 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 222 47% 6%;
+    --foreground: 210 40% 98%;
+
+    --card: 222 47% 10%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 222 47% 8%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 142 76% 46%;
+    --primary-foreground: 222 47% 6%;
+
+    --secondary: 217 33% 17%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 217 33% 17%;
+    --muted-foreground: 215 20% 65%;
+
+    --accent: 217 33% 17%;
+    --accent-foreground: 210 40% 98%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 217 33% 17%;
+    --input: 217 33% 17%;
+    --ring: 142 76% 46%;
+
+    --radius: 1rem;
+
+    /* Custom Colors */
+    --safe: 142 76% 46%;
+    --safe-glow: 142 76% 56%;
+    --safe-foreground: 222 47% 6%;
+    --warning: 45 93% 47%;
+    --warning-glow: 45 93% 57%;
+    --warning-foreground: 222 47% 6%;
+    --danger: 0 84% 60%;
+    --danger-glow: 0 84% 70%;
+    --danger-foreground: 210 40% 98%;
+
+    /* Glassmorphism */
+    --glass: 222 47% 12%;
+    --glass-border: 217 33% 25%;
+
+    /* Gradients */
+    --gradient-bg: linear-gradient(180deg, hsl(222 47% 8%) 0%, hsl(222 47% 4%) 100%);
+    --gradient-safe: linear-gradient(135deg, hsl(142 76% 46%) 0%, hsl(160 84% 39%) 100%);
+    --gradient-warning: linear-gradient(135deg, hsl(45 93% 47%) 0%, hsl(36 100% 50%) 100%);
+    --gradient-danger: linear-gradient(135deg, hsl(0 84% 60%) 0%, hsl(348 83% 47%) 100%);
+
+    --sidebar-background: 222 47% 8%;
+    --sidebar-foreground: 210 40% 98%;
+    --sidebar-primary: 142 76% 46%;
+    --sidebar-primary-foreground: 222 47% 6%;
+    --sidebar-accent: 217 33% 17%;
+    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-border: 217 33% 17%;
+    --sidebar-ring: 142 76% 46%;
+  }
+
+  .light {
+    --background: 0 0% 98%;
+    --foreground: 222 47% 11%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+
+    --primary: 142 76% 36%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 220 14% 96%;
+    --secondary-foreground: 222 47% 11%;
+
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 9% 46%;
+
+    --accent: 220 14% 96%;
+    --accent-foreground: 222 47% 11%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 142 76% 36%;
+
+    /* Custom Colors - Light */
+    --safe: 142 76% 36%;
+    --safe-glow: 142 76% 46%;
+    --safe-foreground: 0 0% 100%;
+    --warning: 45 93% 47%;
+    --warning-glow: 45 93% 57%;
+    --warning-foreground: 222 47% 11%;
+    --danger: 0 84% 60%;
+    --danger-glow: 0 84% 70%;
+    --danger-foreground: 0 0% 100%;
+
+    /* Glassmorphism - Light */
+    --glass: 0 0% 100%;
+    --glass-border: 220 13% 85%;
+
+    /* Gradients - Light */
+    --gradient-bg: linear-gradient(180deg, hsl(220 20% 97%) 0%, hsl(220 14% 94%) 100%);
+    --gradient-safe: linear-gradient(135deg, hsl(142 76% 36%) 0%, hsl(160 84% 29%) 100%);
+    --gradient-warning: linear-gradient(135deg, hsl(45 93% 47%) 0%, hsl(36 100% 50%) 100%);
+    --gradient-danger: linear-gradient(135deg, hsl(0 84% 60%) 0%, hsl(348 83% 47%) 100%);
+
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 222 47% 11%;
+    --sidebar-primary: 142 76% 36%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 220 14% 96%;
+    --sidebar-accent-foreground: 222 47% 11%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 142 76% 36%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    background: var(--gradient-bg);
+    min-height: 100vh;
+  }
+}
+
+@layer utilities {
+  .glass {
+    @apply bg-glass/40 backdrop-blur-xl border border-glass-border/30 shadow-xl;
+  }
+
+  .light .glass {
+    @apply bg-glass/80 backdrop-blur-xl border border-glass-border/50 shadow-lg;
+  }
+
+  .glass-card {
+    @apply glass rounded-2xl;
+  }
+
+  .text-gradient-safe {
+    @apply bg-clip-text text-transparent;
+    background-image: var(--gradient-safe);
+  }
+
+  .text-gradient-warning {
+    @apply bg-clip-text text-transparent;
+    background-image: var(--gradient-warning);
+  }
+
+  .text-gradient-danger {
+    @apply bg-clip-text text-transparent;
+    background-image: var(--gradient-danger);
+  }
+
+  .glow-safe {
+    box-shadow: 0 0 40px hsl(var(--safe) / 0.3), 0 0 80px hsl(var(--safe) / 0.15);
+  }
+
+  .glow-warning {
+    box-shadow: 0 0 40px hsl(var(--warning) / 0.3), 0 0 80px hsl(var(--warning) / 0.15);
+  }
+
+  .glow-danger {
+    box-shadow: 0 0 40px hsl(var(--danger) / 0.3), 0 0 80px hsl(var(--danger) / 0.15);
+  }
+
+  .light .glow-safe {
+    box-shadow: 0 0 30px hsl(var(--safe) / 0.2), 0 0 60px hsl(var(--safe) / 0.1);
+  }
+
+  .light .glow-warning {
+    box-shadow: 0 0 30px hsl(var(--warning) / 0.2), 0 0 60px hsl(var(--warning) / 0.1);
+  }
+
+  .light .glow-danger {
+    box-shadow: 0 0 30px hsl(var(--danger) / 0.2), 0 0 60px hsl(var(--danger) / 0.1);
+  }
+
+  .pulse-danger {
+    animation: pulse-danger 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  @keyframes pulse-danger {
+    0%, 100% {
+      opacity: 1;
+      box-shadow: 0 0 40px hsl(var(--danger) / 0.4), 0 0 80px hsl(var(--danger) / 0.2);
+    }
+    50% {
+      opacity: 0.85;
+      box-shadow: 0 0 60px hsl(var(--danger) / 0.6), 0 0 100px hsl(var(--danger) / 0.3);
+    }
+  }
+
+  .ring-progress {
+    transition: stroke-dashoffset 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  @keyframes float {
+    0%, 100% {
+      transform: translateY(0) translateX(0);
+      opacity: 0.3;
+    }
+    50% {
+      transform: translateY(-20px) translateX(10px);
+      opacity: 0.5;
+    }
+  }
+
+  @keyframes windFlow {
+    0% {
+      transform: translateX(-100px);
+      opacity: 0;
+    }
+    50% {
+      opacity: 0.5;
+    }
+    100% {
+      transform: translateX(100px);
+      opacity: 0;
+    }
+  }
+}
