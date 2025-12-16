@@ -48,9 +48,18 @@ async function handleResponse<T>(response: Response): Promise<T> {
   
   // Unwrap API response if it has success/data structure
   if (json && typeof json === 'object' && 'success' in json && 'data' in json) {
-    // For responses with metadata (like pagination), preserve all fields except 'success'
-    const { success, ...rest } = json;
-    return rest as T;
+    // Check if there are metadata fields (pagination, range, interval, etc.)
+    const metadataKeys = ['total', 'limit', 'offset', 'range', 'interval', 'count'];
+    const hasMetadata = metadataKeys.some(key => key in json);
+    
+    if (hasMetadata) {
+      // For responses with metadata (like pagination), preserve all fields except 'success'
+      const { success, ...rest } = json;
+      return rest as T;
+    } else {
+      // For simple responses, return just the data
+      return json.data as T;
+    }
   }
   
   return json as T;

@@ -4,14 +4,14 @@ import type { SensorStatus, SensorRangeData } from "@/types/api-types";
 
 /**
  * Hook to fetch current sensor status
- * Automatically refetches every 30 seconds
+ * Automatically refetches every 2 minutes
  */
 export function useCurrentSensor() {
   return useQuery<SensorStatus>({
     queryKey: ["sensor", "current"],
     queryFn: aqmsService.getCurrentStatus,
-    refetchInterval: 30000, // Refetch every 30 seconds
-    staleTime: 20000, // Consider data stale after 20 seconds
+    refetchInterval: 120000, // Refetch every 2 minutes
+    staleTime: 100000, // Consider data stale after 100 seconds
   });
 }
 

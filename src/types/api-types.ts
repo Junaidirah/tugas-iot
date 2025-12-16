@@ -101,6 +101,7 @@ export interface UserSettings {
     danger: number;
   };
   theme: "dark" | "light";
+  chartType?: "area" | "bar"; // Optional for backward compatibility
 }
 
 export interface HistoryFilters {

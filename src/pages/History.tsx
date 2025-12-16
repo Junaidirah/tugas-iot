@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Calendar, Download, ArrowUpRight, ArrowDownRight, Minus, Loader2 } from "lucide-react";
+import { Download, ArrowUpRight, ArrowDownRight, Minus, Loader2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -31,6 +31,16 @@ const History = () => {
   const [selectedFilter, setSelectedFilter] = useState<"all" | Status>("all");
   const [isExporting, setIsExporting] = useState(false);
   const { settings } = useSettings();
+  
+  // Date range state for export
+  const [startDate, setStartDate] = useState(() => {
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    return thirtyDaysAgo.toISOString().split('T')[0];
+  });
+  const [endDate, setEndDate] = useState(() => {
+    return new Date().toISOString().split('T')[0];
+  });
 
   // Fetch history data with filters
   const { data: historyResponse, isLoading: isLoadingHistory } = useHistory({
@@ -42,7 +52,12 @@ const History = () => {
   // Fetch statistics
   const { data: stats, isLoading: isLoadingStats } = useStatistics();
 
-  const filteredData = historyResponse?.data || [];
+  // Remove duplicates based on sensorId - keep only first occurrence
+  const filteredData = historyResponse?.data 
+    ? historyResponse.data.filter((item, index, self) =>
+        index === self.findIndex((t) => t.sensorId === item.sensorId)
+      )
+    : [];
 
   // Calculate statistics percentages
   const safePercentage = stats?.data?.statusDistribution
@@ -56,22 +71,34 @@ const History = () => {
   const handleExport = async (format: "csv" | "json") => {
     try {
       setIsExporting(true);
-      const now = new Date();
-      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      
+      // Convert date strings to ISO format with time
+      const start = new Date(startDate);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+
+      console.log('Exporting data:', {
+        format,
+        startDate: start.toISOString(),
+        endDate: end.toISOString()
+      });
 
       const blob = await aqmsService.exportHistory({
         format,
-        startDate: thirtyDaysAgo.toISOString(),
-        endDate: now.toISOString(),
+        startDate: start.toISOString(),
+        endDate: end.toISOString(),
       });
 
-      const filename = `aqms-history-${formatDate(now.toISOString())}.${format}`;
+      console.log('Export blob received:', blob);
+
+      const filename = `aqms-history-${startDate}-to-${endDate}.${format}`;
       downloadFile(blob, filename);
       
       toast.success(`Data exported successfully as ${format.toUpperCase()}`);
     } catch (error) {
       console.error("Export failed:", error);
-      toast.error("Failed to export data. Please try again.");
+      toast.error(`Failed to export data: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsExporting(false);
     }
@@ -92,11 +119,32 @@ const History = () => {
         </header>
 
         {/* Controls */}
-        <div className="flex gap-3 animate-fade-in" style={{ animationDelay: "100ms" }}>
-          <Button variant="outline" className="glass-card flex-1 gap-2">
-            <Calendar size={16} />
-            <span>Date Range</span>
-          </Button>
+        <div className="grid grid-cols-2 gap-3 animate-fade-in" style={{ animationDelay: "100ms" }}>
+          <div className="glass-card p-3 rounded-xl">
+            <label className="text-xs text-muted-foreground block mb-1">Start Date</label>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              max={endDate}
+              className="w-full bg-transparent text-foreground text-sm focus:outline-none"
+            />
+          </div>
+          <div className="glass-card p-3 rounded-xl">
+            <label className="text-xs text-muted-foreground block mb-1">End Date</label>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              min={startDate}
+              max={new Date().toISOString().split('T')[0]}
+              className="w-full bg-transparent text-foreground text-sm focus:outline-none"
+            />
+          </div>
+        </div>
+
+        {/* Export Buttons */}
+        <div className="grid grid-cols-2 gap-3 animate-fade-in" style={{ animationDelay: "150ms" }}>
           <Button 
             variant="outline" 
             className="glass-card gap-2"
@@ -108,6 +156,20 @@ const History = () => {
             ) : (
               <Download size={16} />
             )}
+            <span>Export CSV</span>
+          </Button>
+          <Button 
+            variant="outline" 
+            className="glass-card gap-2"
+            onClick={() => handleExport("json")}
+            disabled={isExporting}
+          >
+            {isExporting ? (
+              <Loader2 size={16} className="animate-spin" />
+            ) : (
+              <Download size={16} />
+            )}
+            <span>Export JSON</span>
           </Button>
         </div>
 
@@ -157,9 +219,9 @@ const History = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredData.map((item) => (
+                {filteredData.map((item, index) => (
                   <TableRow
-                    key={item.id}
+                    key={item.sensorId || index}
                     className="border-glass-border/30 hover:bg-glass/50 transition-colors"
                   >
                     <TableCell className="py-3">

@@ -2,16 +2,18 @@ import { useState, useMemo } from "react";
 import { Thermometer, Droplets, Wind, Loader2 } from "lucide-react";
 import CircularProgress from "@/components/CircularProgress";
 import MetricCard from "@/components/MetricCard";
-import HistoryChart from "@/components/HistoryChart";
+import HistoryBarChart from "@/components/HistoryBarChart";
 import BottomNav from "@/components/BottomNav";
 import TimeRangeTabs from "@/components/TimeRangeTabs";
 import DynamicBackground from "@/components/DynamicBackground";
 import { useTimeOfDay } from "@/hooks/useTimeOfDay";
 import { useCurrentSensor, useSensorRange } from "@/hooks/useSensorData";
-import { useChartData } from "@/hooks/useHistoryData";
+import { useHistory } from "@/hooks/useHistoryData";
 import { useSettings } from "@/contexts/SettingsContext";
 import { getStatus } from "@/lib/status-utils";
-import { formatChartLabel } from "@/lib/date-utils";
+// import { formatTime } from "@/lib/date-utils";
+
+// Chart uses history data instead of chart API
 
 const getTrendInfo = (current: number, previous: number, unit: string) => {
   const diff = current - previous;
@@ -29,19 +31,32 @@ const Index = () => {
   // Fetch current sensor data
   const { data: currentData, isLoading: isLoadingCurrent } = useCurrentSensor();
   
-  // Fetch range data when not on "current"
-  const { data: rangeData, isLoading: isLoadingRange } = useSensorRange(
-    selectedRange !== "current" ? selectedRange : "1h"
-  );
+  // Fetch all range data
+  const { data: range1h } = useSensorRange("1h");
+  const { data: range8h } = useSensorRange("8h");
+  const { data: range24h } = useSensorRange("24h");
+  
+  // Select appropriate range data based on selectedRange
+  const rangeData = selectedRange === "1h" ? range1h 
+    : selectedRange === "8h" ? range8h
+    : selectedRange === "24h" ? range24h
+    : null;
 
-  // Fetch chart data based on selected range
-  const chartRange = selectedRange === "current" || selectedRange === "1h" ? "24h" : 
-                     selectedRange === "8h" ? "24h" : "24h";
-  const { data: chartResponse, isLoading: isLoadingChart } = useChartData(chartRange);
+  // Fetch history data for chart (last 24 hours, limit to 24 points for hourly data)
+  const { data: chartHistoryData, isLoading: isLoadingChart } = useHistory({
+    limit: 24,
+    offset: 0,
+  });
 
   // Calculate average from range data
   const calculateAverage = (data: typeof rangeData) => {
-    if (!data || !data.data || data.data.length === 0) return null;
+    if (!data || !data.data || data.data.length === 0) {
+      console.log('No range data available:', data);
+      return null;
+    }
+    
+    console.log('Range data:', data);
+    console.log('Range data count:', data.data.length);
     
     const sum = data.data.reduce((acc, item) => ({
       co2: acc.co2 + item.co2,
@@ -50,17 +65,28 @@ const Index = () => {
     }), { co2: 0, temperature: 0, humidity: 0 });
     
     const count = data.data.length;
-    return {
-      co2: sum.co2 / count,
-      temperature: sum.temperature / count,
-      humidity: sum.humidity / count,
+    const result = {
+      co2: Number((sum.co2 / count).toFixed(2)),
+      temperature: Number((sum.temperature / count).toFixed(2)),
+      humidity: Number((sum.humidity / count).toFixed(2)),
     };
+    
+    console.log('Calculated average:', result);
+    return result;
   };
 
   // Determine which data to display
+  console.log('=== DATA DEBUG ===');
+  console.log('selectedRange:', selectedRange);
+  console.log('currentData:', currentData);
+  console.log('rangeData:', rangeData);
+  
   const displayData = selectedRange === "current" 
     ? currentData 
     : calculateAverage(rangeData) || currentData;
+  
+  console.log('displayData:', displayData);
+  console.log('==================');
 
   // Calculate status
   const { status, label } = useMemo(() => {
@@ -81,13 +107,47 @@ const Index = () => {
     ? getTrendInfo(displayData.humidity, currentData?.humidity || 52, "%")
     : { trend: "stable" as const, text: "Loading..." };
 
-  // Format chart data
-  const chartData = chartResponse?.data?.map((point) => ({
-    time: formatChartLabel(point.timestamp, chartResponse.interval),
-    value: point.co2,
-  })) || [];
+  // Format chart data from history - calculate hourly averages for all 24 hours
+  const chartData = useMemo(() => {
+    if (!chartHistoryData?.data || chartHistoryData.data.length === 0) {
+      // Return 24 hours with 0 values if no data
+      return Array.from({ length: 24 }, (_, i) => ({
+        time: `${String(i).padStart(2, '0')}:00`,
+        value: 0,
+      }));
+    }
+    
+    // Group data by hour
+    const hourlyGroups: { [key: number]: number[] } = {};
+    
+    chartHistoryData.data.forEach((point) => {
+      const date = new Date(point.timestamp);
+      const hour = date.getHours();
+      
+      if (!hourlyGroups[hour]) {
+        hourlyGroups[hour] = [];
+      }
+      hourlyGroups[hour].push(point.co2);
+    });
+    
+    // Create array for all 24 hours
+    const hourlyAverages = Array.from({ length: 24 }, (_, hour) => {
+      const values = hourlyGroups[hour];
+      const avgCo2 = values 
+        ? Math.round(values.reduce((sum, val) => sum + val, 0) / values.length)
+        : 0; // 0 if no data for this hour
+      
+      return {
+        time: `${String(hour).padStart(2, '0')}:00`,
+        value: avgCo2,
+      };
+    });
+    
+    console.log('24-hour chart data:', hourlyAverages);
+    return hourlyAverages;
+  }, [chartHistoryData]);
 
-  const isLoading = isLoadingCurrent || (selectedRange !== "current" && isLoadingRange);
+  const isLoading = isLoadingCurrent;
 
   return (
     <div className="min-h-screen pb-28 px-4 pt-8 relative">
@@ -159,8 +219,15 @@ const Index = () => {
             <div className="flex items-center justify-center h-64 glass-card rounded-2xl">
               <Loader2 className="w-6 h-6 animate-spin text-primary" />
             </div>
+          ) : chartData.length === 0 ? (
+            <div className="glass-card p-5">
+              <h3 className="text-foreground font-semibold text-lg mb-4">24h Trend</h3>
+              <div className="flex items-center justify-center h-48 text-muted-foreground text-sm">
+                No chart data available
+              </div>
+            </div>
           ) : (
-            <HistoryChart data={chartData} color={status} />
+            <HistoryBarChart data={chartData} color={status} title="24h Trend" />
           )}
         </section>
       </div>

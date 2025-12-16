@@ -1,4 +1,4 @@
-import { Moon, Sun, Bell, Wifi, Gauge, Info, ChevronRight, Loader2, type LucideIcon } from "lucide-react";
+import { Moon, Sun, Bell, Wifi, Gauge, Info, ChevronRight, Loader2, BarChart3, type LucideIcon } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
@@ -9,25 +9,39 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { useSettings } from "@/contexts/SettingsContext";
 import { useState, useEffect, type ReactNode } from "react";
 import { toast } from "sonner";
+import { NotificationPermissionDialog } from "@/components/NotificationPermissionDialog";
+
+// Settings page with theme, notifications, thresholds, and chart type
 
 const Settings = () => {
-  const { theme, toggleTheme } = useTheme();
+  const { theme, toggleTheme: toggleThemeContext } = useTheme();
   const { settings, isLoading, updateSettings } = useSettings();
   
-  const [notifications, setNotifications] = useState(settings?.notifications.enabled ?? true);
-  const [pushEnabled, setPushEnabled] = useState(settings?.notifications.pushEnabled ?? false);
-  const [dangerThreshold, setDangerThreshold] = useState([settings?.thresholds.danger ?? 1000]);
-  const [warningThreshold, setWarningThreshold] = useState([settings?.thresholds.warning ?? 600]);
+  const [notifications, setNotifications] = useState(settings?.notifications?.enabled ?? true);
+  const [pushEnabled, setPushEnabled] = useState(settings?.notifications?.pushEnabled ?? false);
+  const [dangerThreshold, setDangerThreshold] = useState([settings?.thresholds?.danger ?? 1000]);
+  const [warningThreshold, setWarningThreshold] = useState([settings?.thresholds?.danger ?? 1000]);
+  const [showNotificationDialog, setShowNotificationDialog] = useState(false);
 
   // Sync local state with settings from API
   useEffect(() => {
-    if (settings) {
+    if (settings?.notifications && settings?.thresholds) {
       setNotifications(settings.notifications.enabled);
       setPushEnabled(settings.notifications.pushEnabled);
       setDangerThreshold([settings.thresholds.danger]);
       setWarningThreshold([settings.thresholds.warning]);
     }
   }, [settings]);
+
+  const handleThemeToggle = async () => {
+    toggleThemeContext();
+    const newTheme = theme === "dark" ? "light" : "dark";
+    try {
+      await updateSettings({ theme: newTheme });
+    } catch (error) {
+      console.error("Failed to save theme:", error);
+    }
+  };
 
   const handleNotificationsChange = async (enabled: boolean) => {
     setNotifications(enabled);
@@ -47,23 +61,84 @@ const Settings = () => {
   };
 
   const handlePushEnabledChange = async (enabled: boolean) => {
-    setPushEnabled(enabled);
+    // If enabling, show custom dialog first
+    if (enabled) {
+      setShowNotificationDialog(true);
+      return;
+    }
+    
+    // If disabling, just update settings
+    setPushEnabled(false);
     try {
       await updateSettings({
         notifications: {
           enabled: notifications,
-          pushEnabled: enabled,
+          pushEnabled: false,
         },
       });
-      toast.success("Push notification settings updated");
+      toast.success("Push notifications disabled");
     } catch (error) {
       console.error("Failed to update settings:", error);
       toast.error("Failed to update settings");
-      setPushEnabled(!enabled); // Revert on error
     }
   };
 
+  const handleNotificationConfirm = async () => {
+    setShowNotificationDialog(false);
+    
+    if (!("Notification" in window)) {
+      toast.error("Browser doesn't support notifications");
+      return;
+    }
+
+    if (Notification.permission === "denied") {
+      toast.error("Notification permission denied. Please enable in browser settings.");
+      return;
+    }
+
+    if (Notification.permission !== "granted") {
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") {
+        toast.error("Notification permission denied");
+        return;
+      }
+      toast.success("Notification permission granted!");
+    }
+
+    // Show test notification
+    new Notification("AQMS Notifications Enabled", {
+      body: "You will now receive air quality alerts",
+      icon: "/favicon.ico",
+    });
+
+    setPushEnabled(true);
+    try {
+      await updateSettings({
+        notifications: {
+          enabled: notifications,
+          pushEnabled: true,
+        },
+      });
+      toast.success("Push notifications enabled");
+    } catch (error) {
+      console.error("Failed to update settings:", error);
+      toast.error("Failed to update settings");
+      setPushEnabled(false);
+    }
+  };
+
+  const handleNotificationCancel = () => {
+    setShowNotificationDialog(false);
+    setPushEnabled(false);
+  };
+
   const handleWarningThresholdChange = async (value: number[]) => {
+    // Validate: warning must be less than danger
+    if (value[0] >= dangerThreshold[0]) {
+      toast.error(`Warning level must be below danger level (${dangerThreshold[0]} ppm)`);
+      return;
+    }
+    
     setWarningThreshold(value);
     try {
       await updateSettings({
@@ -80,6 +155,12 @@ const Settings = () => {
   };
 
   const handleDangerThresholdChange = async (value: number[]) => {
+    // Validate: danger must be greater than warning
+    if (value[0] <= warningThreshold[0]) {
+      toast.error(`Danger level must be above warning level (${warningThreshold[0]} ppm)`);
+      return;
+    }
+    
     setDangerThreshold(value);
     try {
       await updateSettings({
@@ -106,7 +187,27 @@ const Settings = () => {
           action: (
             <Switch
               checked={theme === "dark"}
-              onCheckedChange={toggleTheme}
+              onCheckedChange={handleThemeToggle}
+            />
+          ),
+        },
+        {
+          icon: BarChart3,
+          label: "Bar Chart",
+          description: "Use bar chart instead of area chart",
+          action: (
+            <Switch
+              checked={settings?.chartType === "bar"}
+              onCheckedChange={async (checked) => {
+                console.log('Chart type toggle clicked:', checked);
+                try {
+                  await updateSettings({ chartType: checked ? "bar" : "area" });
+                  console.log('Chart type updated to:', checked ? "bar" : "area");
+                  toast.success(`Chart type changed to ${checked ? "bar" : "area"}`);
+                } catch (error) {
+                  console.error("Failed to update chart type:", error);
+                }
+              }}
             />
           ),
         },
@@ -248,7 +349,9 @@ const Settings = () => {
                       <p className="text-sm text-muted-foreground">{item.description}</p>
                     </div>
                   </div>
-                  {item.action}
+                  <div className="relative z-10 cursor-pointer">
+                    {item.action}
+                  </div>
                 </div>
               ))}
             </Card>
@@ -263,7 +366,7 @@ const Settings = () => {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <button
-              onClick={() => theme !== "light" && toggleTheme()}
+              onClick={() => theme !== "light" && handleThemeToggle()}
               className={`p-3 rounded-xl border transition-all ${
                 theme === "light"
                   ? "border-primary bg-primary/10"
@@ -276,7 +379,7 @@ const Settings = () => {
               </div>
             </button>
             <button
-              onClick={() => theme !== "dark" && toggleTheme()}
+              onClick={() => theme !== "dark" && handleThemeToggle()}
               className={`p-3 rounded-xl border transition-all ${
                 theme === "dark"
                   ? "border-primary bg-primary/10"
@@ -293,6 +396,13 @@ const Settings = () => {
       </div>
 
       <BottomNav activeTab="settings" />
+      
+      <NotificationPermissionDialog
+        open={showNotificationDialog}
+        onOpenChange={setShowNotificationDialog}
+        onConfirm={handleNotificationConfirm}
+        onCancel={handleNotificationCancel}
+      />
     </div>
   );
 };
