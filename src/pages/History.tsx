@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Calendar, Download, ArrowUpRight, ArrowDownRight, Minus } from "lucide-react";
+import { Calendar, Download, ArrowUpRight, ArrowDownRight, Minus, Loader2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -13,31 +13,13 @@ import {
 } from "@/components/ui/table";
 import BottomNav from "@/components/BottomNav";
 import DynamicBackground from "@/components/DynamicBackground";
-
-// Mock history data
-const mockHistoryData = [
-  { id: 1, date: "2024-01-15", time: "14:30", co2: 485, temp: 23.5, humidity: 52, status: "safe" },
-  { id: 2, date: "2024-01-15", time: "12:00", co2: 720, temp: 24.2, humidity: 48, status: "warning" },
-  { id: 3, date: "2024-01-15", time: "09:30", co2: 380, temp: 22.8, humidity: 55, status: "safe" },
-  { id: 4, date: "2024-01-14", time: "22:00", co2: 1150, temp: 25.1, humidity: 42, status: "danger" },
-  { id: 5, date: "2024-01-14", time: "18:30", co2: 620, temp: 24.0, humidity: 50, status: "warning" },
-  { id: 6, date: "2024-01-14", time: "15:00", co2: 445, temp: 23.2, humidity: 53, status: "safe" },
-  { id: 7, date: "2024-01-14", time: "10:00", co2: 390, temp: 22.5, humidity: 56, status: "safe" },
-  { id: 8, date: "2024-01-13", time: "20:00", co2: 890, temp: 24.8, humidity: 45, status: "warning" },
-];
-
-const getStatusColor = (status: string) => {
-  switch (status) {
-    case "safe":
-      return "text-safe";
-    case "warning":
-      return "text-warning";
-    case "danger":
-      return "text-danger";
-    default:
-      return "text-foreground";
-  }
-};
+import { useHistory, useStatistics } from "@/hooks/useHistoryData";
+import { useSettings } from "@/contexts/SettingsContext";
+import { getStatusColor } from "@/lib/status-utils";
+import { formatDate, formatTime } from "@/lib/date-utils";
+import { aqmsService, downloadFile } from "@/services/aqms-service";
+import { toast } from "sonner";
+import type { Status } from "@/types/api-types";
 
 const getTrendIcon = (current: number, threshold: number) => {
   if (current > threshold * 1.1) return <ArrowUpRight size={14} className="text-danger" />;
@@ -46,12 +28,54 @@ const getTrendIcon = (current: number, threshold: number) => {
 };
 
 const History = () => {
-  const [selectedFilter, setSelectedFilter] = useState("all");
+  const [selectedFilter, setSelectedFilter] = useState<"all" | Status>("all");
+  const [isExporting, setIsExporting] = useState(false);
+  const { settings } = useSettings();
 
-  const filteredData =
-    selectedFilter === "all"
-      ? mockHistoryData
-      : mockHistoryData.filter((item) => item.status === selectedFilter);
+  // Fetch history data with filters
+  const { data: historyResponse, isLoading: isLoadingHistory } = useHistory({
+    status: selectedFilter,
+    limit: 50,
+    offset: 0,
+  });
+
+  // Fetch statistics
+  const { data: stats, isLoading: isLoadingStats } = useStatistics();
+
+  const filteredData = historyResponse?.data || [];
+
+  // Calculate statistics percentages
+  const safePercentage = stats?.data?.statusDistribution
+    ? Math.round((stats.data.statusDistribution.safe / stats.data.count) * 100)
+    : 0;
+
+  const alertCount = stats?.data?.statusDistribution
+    ? stats.data.statusDistribution.warning + stats.data.statusDistribution.danger
+    : 0;
+
+  const handleExport = async (format: "csv" | "json") => {
+    try {
+      setIsExporting(true);
+      const now = new Date();
+      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+      const blob = await aqmsService.exportHistory({
+        format,
+        startDate: thirtyDaysAgo.toISOString(),
+        endDate: now.toISOString(),
+      });
+
+      const filename = `aqms-history-${formatDate(now.toISOString())}.${format}`;
+      downloadFile(blob, filename);
+      
+      toast.success(`Data exported successfully as ${format.toUpperCase()}`);
+    } catch (error) {
+      console.error("Export failed:", error);
+      toast.error("Failed to export data. Please try again.");
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   return (
     <div className="min-h-screen pb-28 px-4 pt-8 relative">
@@ -73,14 +97,23 @@ const History = () => {
             <Calendar size={16} />
             <span>Date Range</span>
           </Button>
-          <Button variant="outline" className="glass-card gap-2">
-            <Download size={16} />
+          <Button 
+            variant="outline" 
+            className="glass-card gap-2"
+            onClick={() => handleExport("csv")}
+            disabled={isExporting}
+          >
+            {isExporting ? (
+              <Loader2 size={16} className="animate-spin" />
+            ) : (
+              <Download size={16} />
+            )}
           </Button>
         </div>
 
         {/* Filter Tabs */}
         <div className="flex gap-2 animate-fade-in" style={{ animationDelay: "150ms" }}>
-          {["all", "safe", "warning", "danger"].map((filter) => (
+          {(["all", "safe", "warning", "danger"] as const).map((filter) => (
             <Button
               key={filter}
               variant={selectedFilter === filter ? "default" : "outline"}
@@ -105,56 +138,84 @@ const History = () => {
 
         {/* Data Table */}
         <Card className="glass-card overflow-hidden animate-fade-in" style={{ animationDelay: "200ms" }}>
-          <Table>
-            <TableHeader>
-              <TableRow className="border-glass-border/50 hover:bg-transparent">
-                <TableHead className="text-muted-foreground font-medium">Time</TableHead>
-                <TableHead className="text-muted-foreground font-medium">CO₂</TableHead>
-                <TableHead className="text-muted-foreground font-medium">Temp</TableHead>
-                <TableHead className="text-muted-foreground font-medium">Hum</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredData.map((item) => (
-                <TableRow
-                  key={item.id}
-                  className="border-glass-border/30 hover:bg-glass/50 transition-colors"
-                >
-                  <TableCell className="py-3">
-                    <div className="flex flex-col">
-                      <span className="text-foreground font-medium">{item.time}</span>
-                      <span className="text-xs text-muted-foreground">{item.date}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1">
-                      <span className={`font-semibold ${getStatusColor(item.status)}`}>
-                        {item.co2}
-                      </span>
-                      {getTrendIcon(item.co2, 600)}
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-foreground">{item.temp}°</TableCell>
-                  <TableCell className="text-foreground">{item.humidity}%</TableCell>
+          {isLoadingHistory ? (
+            <div className="flex items-center justify-center h-64">
+              <Loader2 className="w-6 h-6 animate-spin text-primary" />
+            </div>
+          ) : filteredData.length === 0 ? (
+            <div className="flex items-center justify-center h-64 text-muted-foreground">
+              No data available
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow className="border-glass-border/50 hover:bg-transparent">
+                  <TableHead className="text-muted-foreground font-medium">Time</TableHead>
+                  <TableHead className="text-muted-foreground font-medium">CO₂</TableHead>
+                  <TableHead className="text-muted-foreground font-medium">Temp</TableHead>
+                  <TableHead className="text-muted-foreground font-medium">Hum</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {filteredData.map((item) => (
+                  <TableRow
+                    key={item.id}
+                    className="border-glass-border/30 hover:bg-glass/50 transition-colors"
+                  >
+                    <TableCell className="py-3">
+                      <div className="flex flex-col">
+                        <span className="text-foreground font-medium">{formatTime(item.timestamp)}</span>
+                        <span className="text-xs text-muted-foreground">{formatDate(item.timestamp)}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1">
+                        <span className={`font-semibold ${getStatusColor(item.status)}`}>
+                          {item.co2}
+                        </span>
+                        {getTrendIcon(item.co2, settings?.thresholds?.warning || 600)}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-foreground">{item.temperature.toFixed(1)}°</TableCell>
+                    <TableCell className="text-foreground">{item.humidity.toFixed(0)}%</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </Card>
 
         {/* Summary Stats */}
         <div className="grid grid-cols-3 gap-3 animate-fade-in" style={{ animationDelay: "300ms" }}>
           <Card className="glass-card p-4 text-center">
-            <p className="text-2xl font-bold text-safe">75%</p>
-            <p className="text-xs text-muted-foreground mt-1">Safe Time</p>
+            {isLoadingStats ? (
+              <Loader2 className="w-4 h-4 animate-spin text-primary mx-auto" />
+            ) : (
+              <>
+                <p className="text-2xl font-bold text-safe">{safePercentage}%</p>
+                <p className="text-xs text-muted-foreground mt-1">Safe Time</p>
+              </>
+            )}
           </Card>
           <Card className="glass-card p-4 text-center">
-            <p className="text-2xl font-bold text-foreground">512</p>
-            <p className="text-xs text-muted-foreground mt-1">Avg CO₂</p>
+            {isLoadingStats ? (
+              <Loader2 className="w-4 h-4 animate-spin text-primary mx-auto" />
+            ) : (
+              <>
+                <p className="text-2xl font-bold text-foreground">{stats?.data?.co2.avg.toFixed(0) || 0}</p>
+                <p className="text-xs text-muted-foreground mt-1">Avg CO₂</p>
+              </>
+            )}
           </Card>
           <Card className="glass-card p-4 text-center">
-            <p className="text-2xl font-bold text-warning">3</p>
-            <p className="text-xs text-muted-foreground mt-1">Alerts</p>
+            {isLoadingStats ? (
+              <Loader2 className="w-4 h-4 animate-spin text-primary mx-auto" />
+            ) : (
+              <>
+                <p className="text-2xl font-bold text-warning">{alertCount}</p>
+                <p className="text-xs text-muted-foreground mt-1">Alerts</p>
+              </>
+            )}
           </Card>
         </div>
       </div>

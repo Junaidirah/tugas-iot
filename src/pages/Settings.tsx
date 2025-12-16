@@ -1,4 +1,4 @@
-import { Moon, Sun, Bell, Wifi, Gauge, Info, ChevronRight, type LucideIcon } from "lucide-react";
+import { Moon, Sun, Bell, Wifi, Gauge, Info, ChevronRight, Loader2, type LucideIcon } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
@@ -6,13 +6,94 @@ import { Slider } from "@/components/ui/slider";
 import BottomNav from "@/components/BottomNav";
 import DynamicBackground from "@/components/DynamicBackground";
 import { useTheme } from "@/contexts/ThemeContext";
-import { useState, type ReactNode } from "react";
+import { useSettings } from "@/contexts/SettingsContext";
+import { useState, useEffect, type ReactNode } from "react";
+import { toast } from "sonner";
 
 const Settings = () => {
   const { theme, toggleTheme } = useTheme();
-  const [notifications, setNotifications] = useState(true);
-  const [dangerThreshold, setDangerThreshold] = useState([1000]);
-  const [warningThreshold, setWarningThreshold] = useState([600]);
+  const { settings, isLoading, updateSettings } = useSettings();
+  
+  const [notifications, setNotifications] = useState(settings?.notifications.enabled ?? true);
+  const [pushEnabled, setPushEnabled] = useState(settings?.notifications.pushEnabled ?? false);
+  const [dangerThreshold, setDangerThreshold] = useState([settings?.thresholds.danger ?? 1000]);
+  const [warningThreshold, setWarningThreshold] = useState([settings?.thresholds.warning ?? 600]);
+
+  // Sync local state with settings from API
+  useEffect(() => {
+    if (settings) {
+      setNotifications(settings.notifications.enabled);
+      setPushEnabled(settings.notifications.pushEnabled);
+      setDangerThreshold([settings.thresholds.danger]);
+      setWarningThreshold([settings.thresholds.warning]);
+    }
+  }, [settings]);
+
+  const handleNotificationsChange = async (enabled: boolean) => {
+    setNotifications(enabled);
+    try {
+      await updateSettings({
+        notifications: {
+          enabled,
+          pushEnabled: enabled ? pushEnabled : false,
+        },
+      });
+      toast.success("Notification settings updated");
+    } catch (error) {
+      console.error("Failed to update settings:", error);
+      toast.error("Failed to update settings");
+      setNotifications(!enabled); // Revert on error
+    }
+  };
+
+  const handlePushEnabledChange = async (enabled: boolean) => {
+    setPushEnabled(enabled);
+    try {
+      await updateSettings({
+        notifications: {
+          enabled: notifications,
+          pushEnabled: enabled,
+        },
+      });
+      toast.success("Push notification settings updated");
+    } catch (error) {
+      console.error("Failed to update settings:", error);
+      toast.error("Failed to update settings");
+      setPushEnabled(!enabled); // Revert on error
+    }
+  };
+
+  const handleWarningThresholdChange = async (value: number[]) => {
+    setWarningThreshold(value);
+    try {
+      await updateSettings({
+        thresholds: {
+          warning: value[0],
+          danger: dangerThreshold[0],
+        },
+      });
+      toast.success(`Warning threshold set to ${value[0]} ppm`);
+    } catch (error) {
+      console.error("Failed to update settings:", error);
+      toast.error("Failed to update threshold");
+    }
+  };
+
+  const handleDangerThresholdChange = async (value: number[]) => {
+    setDangerThreshold(value);
+    try {
+      await updateSettings({
+        thresholds: {
+          warning: warningThreshold[0],
+          danger: value[0],
+        },
+      });
+      toast.success(`Danger threshold set to ${value[0]} ppm`);
+    } catch (error) {
+      console.error("Failed to update settings:", error);
+      toast.error("Failed to update threshold");
+    }
+  };
 
   const settingGroups: { title: string; items: { icon: LucideIcon; label: string; description: string; action: ReactNode }[] }[] = [
     {
@@ -36,12 +117,25 @@ const Settings = () => {
       items: [
         {
           icon: Bell,
-          label: "Push Notifications",
-          description: "Receive alerts when air quality changes",
+          label: "Notifications",
+          description: "Enable air quality alerts",
           action: (
             <Switch
               checked={notifications}
-              onCheckedChange={setNotifications}
+              onCheckedChange={handleNotificationsChange}
+              disabled={isLoading}
+            />
+          ),
+        },
+        {
+          icon: Bell,
+          label: "Push Notifications",
+          description: "Receive push notifications",
+          action: (
+            <Switch
+              checked={pushEnabled}
+              onCheckedChange={handlePushEnabledChange}
+              disabled={isLoading || !notifications}
             />
           ),
         },
@@ -59,10 +153,12 @@ const Settings = () => {
               <Slider
                 value={warningThreshold}
                 onValueChange={setWarningThreshold}
+                onValueCommit={handleWarningThresholdChange}
                 min={400}
                 max={800}
                 step={50}
                 className="w-full"
+                disabled={isLoading}
               />
             </div>
           ),
@@ -76,10 +172,12 @@ const Settings = () => {
               <Slider
                 value={dangerThreshold}
                 onValueChange={setDangerThreshold}
+                onValueCommit={handleDangerThresholdChange}
                 min={800}
                 max={2000}
                 step={100}
                 className="w-full"
+                disabled={isLoading}
               />
             </div>
           ),
@@ -118,6 +216,12 @@ const Settings = () => {
           <h1 className="text-2xl font-bold text-foreground">Settings</h1>
           <p className="text-muted-foreground text-sm mt-1">Configure your preferences</p>
         </header>
+
+        {isLoading && (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="w-6 h-6 animate-spin text-primary" />
+          </div>
+        )}
 
         {/* Settings Groups */}
         {settingGroups.map((group, groupIndex) => (

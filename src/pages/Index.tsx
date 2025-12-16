@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Thermometer, Droplets, Wind } from "lucide-react";
+import { Thermometer, Droplets, Wind, Loader2 } from "lucide-react";
 import CircularProgress from "@/components/CircularProgress";
 import MetricCard from "@/components/MetricCard";
 import HistoryChart from "@/components/HistoryChart";
@@ -7,30 +7,11 @@ import BottomNav from "@/components/BottomNav";
 import TimeRangeTabs from "@/components/TimeRangeTabs";
 import DynamicBackground from "@/components/DynamicBackground";
 import { useTimeOfDay } from "@/hooks/useTimeOfDay";
-
-// Mock data
-const mockChartData = [
-  { time: "00:00", value: 420 },
-  { time: "04:00", value: 380 },
-  { time: "08:00", value: 520 },
-  { time: "12:00", value: 680 },
-  { time: "16:00", value: 590 },
-  { time: "20:00", value: 450 },
-  { time: "Now", value: 485 },
-];
-
-const mockDataByRange = {
-  current: { co2: 485, temp: 23.5, humidity: 52 },
-  "1h": { co2: 512, temp: 24.1, humidity: 48 },
-  "8h": { co2: 548, temp: 23.8, humidity: 50 },
-  "24h": { co2: 502, temp: 22.9, humidity: 54 },
-};
-
-const getStatus = (value: number) => {
-  if (value < 600) return { status: "safe" as const, label: "Fresh Air" };
-  if (value < 1000) return { status: "warning" as const, label: "Moderate" };
-  return { status: "danger" as const, label: "Poor Quality" };
-};
+import { useCurrentSensor, useSensorRange } from "@/hooks/useSensorData";
+import { useChartData } from "@/hooks/useHistoryData";
+import { useSettings } from "@/contexts/SettingsContext";
+import { getStatus } from "@/lib/status-utils";
+import { formatChartLabel } from "@/lib/date-utils";
 
 const getTrendInfo = (current: number, previous: number, unit: string) => {
   const diff = current - previous;
@@ -41,14 +22,72 @@ const getTrendInfo = (current: number, previous: number, unit: string) => {
 };
 
 const Index = () => {
-  const [selectedRange, setSelectedRange] = useState("current");
+  const [selectedRange, setSelectedRange] = useState<"current" | "1h" | "8h" | "24h">("current");
   const { greeting } = useTimeOfDay();
+  const { settings } = useSettings();
 
-  const currentData = mockDataByRange[selectedRange as keyof typeof mockDataByRange];
-  const { status, label } = useMemo(() => getStatus(currentData.co2), [currentData.co2]);
+  // Fetch current sensor data
+  const { data: currentData, isLoading: isLoadingCurrent } = useCurrentSensor();
+  
+  // Fetch range data when not on "current"
+  const { data: rangeData, isLoading: isLoadingRange } = useSensorRange(
+    selectedRange !== "current" ? selectedRange : "1h"
+  );
 
-  const tempTrend = getTrendInfo(currentData.temp, 23.5, "°");
-  const humidityTrend = getTrendInfo(currentData.humidity, 52, "%");
+  // Fetch chart data based on selected range
+  const chartRange = selectedRange === "current" || selectedRange === "1h" ? "24h" : 
+                     selectedRange === "8h" ? "24h" : "24h";
+  const { data: chartResponse, isLoading: isLoadingChart } = useChartData(chartRange);
+
+  // Calculate average from range data
+  const calculateAverage = (data: typeof rangeData) => {
+    if (!data || !data.data || data.data.length === 0) return null;
+    
+    const sum = data.data.reduce((acc, item) => ({
+      co2: acc.co2 + item.co2,
+      temperature: acc.temperature + item.temperature,
+      humidity: acc.humidity + item.humidity,
+    }), { co2: 0, temperature: 0, humidity: 0 });
+    
+    const count = data.data.length;
+    return {
+      co2: sum.co2 / count,
+      temperature: sum.temperature / count,
+      humidity: sum.humidity / count,
+    };
+  };
+
+  // Determine which data to display
+  const displayData = selectedRange === "current" 
+    ? currentData 
+    : calculateAverage(rangeData) || currentData;
+
+  // Calculate status
+  const { status, label } = useMemo(() => {
+    if (!displayData) return { status: "safe" as const, label: "Loading..." };
+    return getStatus(
+      displayData.co2,
+      settings?.thresholds?.warning,
+      settings?.thresholds?.danger
+    );
+  }, [displayData, settings]);
+
+  // Calculate trends
+  const tempTrend = displayData 
+    ? getTrendInfo(displayData.temperature, currentData?.temperature || 23.5, "°")
+    : { trend: "stable" as const, text: "Loading..." };
+  
+  const humidityTrend = displayData
+    ? getTrendInfo(displayData.humidity, currentData?.humidity || 52, "%")
+    : { trend: "stable" as const, text: "Loading..." };
+
+  // Format chart data
+  const chartData = chartResponse?.data?.map((point) => ({
+    time: formatChartLabel(point.timestamp, chartResponse.interval),
+    value: point.co2,
+  })) || [];
+
+  const isLoading = isLoadingCurrent || (selectedRange !== "current" && isLoadingRange);
 
   return (
     <div className="min-h-screen pb-28 px-4 pt-8 relative">
@@ -72,16 +111,21 @@ const Index = () => {
           className="flex flex-col items-center gap-6 py-4 animate-fade-in"
           style={{ animationDelay: "100ms" }}
         >
-          <CircularProgress
-            value={currentData.co2}
-            max={2000}
-            status={status}
-            label={label}
-          />
+          {isLoading ? (
+            <div className="flex items-center justify-center h-64">
+              <Loader2 className="w-8 h-8 animate-spin text-primary" />
+            </div>
+          ) : (
+            <CircularProgress
+              value={displayData?.co2 || 0}
+              max={2000}
+              status={status}
+              label={label}
+            />
+          )}
           <TimeRangeTabs selected={selectedRange} onSelect={setSelectedRange} />
         </section>
 
-        {/* Secondary Metrics */}
         <section
           className="grid grid-cols-2 gap-4 animate-fade-in"
           style={{ animationDelay: "200ms" }}
@@ -89,7 +133,7 @@ const Index = () => {
           <MetricCard
             icon={Thermometer}
             label="Temperature"
-            value={currentData.temp}
+            value={displayData?.temperature?.toFixed(1) ?? "0.0"}
             unit="°C"
             trend={tempTrend.trend}
             trendValue={tempTrend.text}
@@ -98,7 +142,7 @@ const Index = () => {
           <MetricCard
             icon={Droplets}
             label="Humidity"
-            value={currentData.humidity}
+            value={displayData?.humidity?.toFixed(0) ?? "0"}
             unit="%"
             trend={humidityTrend.trend}
             trendValue={humidityTrend.text}
@@ -111,7 +155,13 @@ const Index = () => {
           className="animate-fade-in"
           style={{ animationDelay: "300ms" }}
         >
-          <HistoryChart data={mockChartData} color={status} />
+          {isLoadingChart ? (
+            <div className="flex items-center justify-center h-64 glass-card rounded-2xl">
+              <Loader2 className="w-6 h-6 animate-spin text-primary" />
+            </div>
+          ) : (
+            <HistoryChart data={chartData} color={status} />
+          )}
         </section>
       </div>
 

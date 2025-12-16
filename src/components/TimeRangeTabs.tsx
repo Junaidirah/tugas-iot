@@ -1,12 +1,14 @@
 import { cn } from "@/lib/utils";
 
+type TimeRange = "current" | "1h" | "8h" | "24h";
+
 interface TimeRangeTabsProps {
-  selected: string;
-  onSelect: (value: string) => void;
+  selected: TimeRange;
+  onSelect: (value: TimeRange) => void;
 }
 
 const TimeRangeTabs = ({ selected, onSelect }: TimeRangeTabsProps) => {
-  const options = [
+  const options: { value: TimeRange; label: string }[] = [
     { value: "current", label: "Current" },
     { value: "1h", label: "1h Avg" },
     { value: "8h", label: "8h Avg" },
